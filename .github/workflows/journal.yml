@@ -1,0 +1,60 @@
+name: Journal (actus publiques)
+
+# Toutes les 30 min : récupère les actus par thème (actu.py) et publie la page.
+# Les horaires GitHub peuvent prendre du retard : ce n'est pas grave ici,
+# la page affiche l'heure de mise à jour.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: Récupérer les actus
+        run: python actu.py
+
+      # GitHub désactive les crons d'un dépôt public sans activité depuis 60 jours
+      - name: Garder le robot en vie
+        run: |
+          if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt $(( 30 * 86400 )) ]; then
+            git config user.name "journal-bot"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -q -m "Garder le robot du journal en vie"
+            git push -q
+          fi
+
+      - name: Préparer le site
+        run: mkdir _site && cp index.html actu.json _site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deploiement
+        uses: actions/deploy-pages@v4

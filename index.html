@@ -105,6 +105,31 @@
   .note .sub { color: var(--muted); font-size: .85rem; }
   .note .cls { color: var(--muted); font-size: .8rem; text-align: right; }
 
+  /* journal */
+  .onglets { display: flex; gap: 6px; overflow-x: auto; margin: 0 -4px 12px; padding: 0 4px 4px; }
+  .onglets button {
+    flex: none; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+    border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .85rem; cursor: pointer;
+  }
+  .onglets button.actif { background: var(--ink); color: var(--card); border-color: var(--ink); font-weight: 600; }
+  .article { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); color: inherit; text-decoration: none; }
+  .article:first-of-type { border-top: 0; }
+  .article img { width: 84px; height: 64px; object-fit: cover; border-radius: 10px; flex: none; background: var(--bg); }
+  .article .titre { font-weight: 650; line-height: 1.3; }
+  .article .resume { color: var(--muted); font-size: .88rem; margin-top: 3px;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .article.premier { flex-direction: column; }
+  .article.premier img { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .article.premier .titre { font-size: 1.1rem; }
+  .meta { color: var(--muted); font-size: .78rem; margin-top: 4px; }
+  .cours-bourse { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+  .tuile { background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+  .tuile .nom { color: var(--muted); font-size: .78rem; }
+  .tuile .prix { font-weight: 700; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+  .tuile .var { font-size: .82rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tuile .hausse { color: var(--ok); }
+  .tuile .baisse { color: var(--danger); }
+
   .vide { color: var(--muted); font-style: italic; }
   footer { margin-top: 24px; text-align: center; color: var(--muted); font-size: .8rem; }
   #erreur { display: none; }
@@ -320,23 +345,54 @@
     });
   }
 
-  if (live.actu) {
-    const boite = attente("Chargement de l'actu…");
-    app.append(carte("📰 Actu · en direct", boite));
-    fetch(live.actu).then(r => r.text()).then(xml => {
-      const doc = new DOMParser().parseFromString(xml, "text/xml");
-      const items = [...doc.querySelectorAll("item")].slice(0, 3);
-      if (!items.length) throw new Error("vide");
-      boite.replaceWith($("ul", { class: "plain" }, items.map(it => {
-        const lien = it.querySelector("link")?.textContent || "#";
-        return $("li", {}, $("a", { href: lien, target: "_blank", rel: "noopener",
-          style: "color:var(--ink);text-decoration:none;font-weight:600" }, it.querySelector("title")?.textContent || ""));
-      })));
-    }).catch(() => boite.textContent = "Actu indisponible pour le moment.");
-  }
-
   // --- vacances
   if (d.vacances) app.append(carte("Vacances", $("div", {}, d.vacances)));
+
+  // --- LE JOURNAL : actus par thème, mises à jour toutes les 30 min (actu.json)
+  const journal = $("section", { class: "journal" }, $("h2", {}, "📺 Le journal"), attente("Chargement des actus…"));
+  app.append(journal);
+  const ilya = iso => {
+    const min = Math.round((Date.now() - new Date(iso)) / 60000);
+    if (!iso || isNaN(min)) return "";
+    return min < 60 ? `il y a ${Math.max(min, 1)} min` : min < 1440 ? `il y a ${Math.round(min / 60)} h` : `il y a ${Math.round(min / 1440)} j`;
+  };
+  fetch("actu.json?t=" + Date.now()).then(r => r.json()).then(a => {
+    const cles = Object.keys(a.themes || {});
+    const contenu = $("div");
+    const onglets = $("div", { class: "onglets" });
+    const afficher = cle => {
+      for (const b of onglets.children) b.classList.toggle("actif", b.dataset.cle === cle);
+      const t = a.themes[cle];
+      const blocs = [];
+      if (cle === "marche" && (a.cours || []).length) {
+        blocs.push($("div", { class: "cours-bourse" }, a.cours.map(c =>
+          $("div", { class: "tuile" },
+            $("div", { class: "nom" }, c.nom),
+            $("div", { class: "prix" }, c.valeur.toLocaleString("fr-FR", { maximumFractionDigits: c.valeur < 10 ? 4 : 2 })),
+            c.variation == null ? null : $("div", { class: "var " + (c.variation >= 0 ? "hausse" : "baisse") },
+              (c.variation >= 0 ? "▲ +" : "▼ ") + c.variation.toLocaleString("fr-FR") + " %")))));
+      }
+      if (!t.articles.length) blocs.push(attente("Rien pour le moment."));
+      blocs.push(...t.articles.map((art, i) =>
+        $("a", { class: "article" + (i === 0 ? " premier" : ""), href: art.lien || "#", target: "_blank", rel: "noopener" },
+          art.image ? $("img", { src: art.image, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : null,
+          $("div", {},
+            $("div", { class: "titre" }, art.titre),
+            art.resume && art.resume !== art.titre ? $("div", { class: "resume" }, art.resume) : null,
+            $("div", { class: "meta" }, [art.source, ilya(art.date)].filter(Boolean).join(" · "))))));
+      contenu.replaceChildren(...blocs);
+    };
+    for (const cle of cles) {
+      const t = a.themes[cle];
+      const b = $("button", { type: "button" }, t.emoji + " " + t.titre);
+      b.dataset.cle = cle;
+      b.addEventListener("click", () => afficher(cle));
+      onglets.append(b);
+    }
+    journal.replaceChildren($("h2", {}, "📺 Le journal"), onglets, contenu,
+      $("div", { class: "meta", style: "margin-top:10px" }, "Mis à jour " + ilya(a.maj) + " · cours de bourse à titre informatif"));
+    afficher(cles[0]);
+  }).catch(() => journal.replaceChildren($("h2", {}, "📺 Le journal"), attente("Journal indisponible pour le moment.")));
 })();
 </script>
 </body>
