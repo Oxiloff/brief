@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Brief du matin</title>
+<!--
+  Afficheur générique : cette page ne contient AUCUNE donnée.
+  Le brief est dans le lien lui-même, après le # (JSON compressé en deflate,
+  encodé en base64url). La partie après # n'est jamais envoyée au serveur.
+-->
+<style>
+  :root {
+    --bg: #f4f2ee; --card: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e6e3dd;
+    --accent: #e8743b; --accent-soft: #fdeee5; --danger: #d6383a; --danger-soft: #fde8e8;
+    --ok: #2f8f5b; --ok-soft: #e4f4ea; --info: #3a6fd6; --info-soft: #e7eefc;
+    --rain: #5b8def;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416; --card: #1f1f23; --ink: #f2f2f4; --muted: #9a9aa2; --line: #2e2e34;
+      --accent: #f08a54; --accent-soft: #3a261b; --danger: #ff6b6b; --danger-soft: #3b1f20;
+      --ok: #5cc98b; --ok-soft: #1b3326; --info: #7aa2ff; --info-soft: #1d2740;
+      --rain: #7aa2ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
+  header h1 { font-size: 1.6rem; margin: 4px 0 2px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: .85rem; }
+  .hero {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    margin: 14px 0 4px; font-size: 2rem; font-weight: 700; letter-spacing: -0.02em;
+  }
+  .hero small { font-size: .95rem; font-weight: 500; color: var(--muted); }
+  section {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 14px 16px; margin-top: 14px;
+  }
+  h2 {
+    font-size: .8rem; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0 0 10px;
+  }
+  .alert {
+    border-radius: 12px; padding: 10px 12px; margin-top: 8px; font-weight: 600;
+    background: var(--danger-soft); color: var(--danger);
+  }
+  .alert.warn { background: var(--accent-soft); color: var(--accent); }
+  .alert.info { background: var(--info-soft); color: var(--info); font-weight: 500; }
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain li { padding: 6px 0; border-top: 1px solid var(--line); }
+  ul.plain li:first-child { border-top: 0; }
+
+  /* météo */
+  .meteo-top { display: flex; align-items: center; gap: 12px; }
+  .meteo-top .emoji { font-size: 2.4rem; line-height: 1; }
+  .meteo-top b { font-size: 1.15rem; }
+  .meteo-top span { color: var(--muted); }
+  .conseil { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--bg); }
+  .heures {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(40px, 1fr);
+    gap: 4px; margin-top: 12px; overflow-x: auto; padding-bottom: 4px;
+  }
+  .h { text-align: center; font-size: .75rem; color: var(--muted); }
+  .h .t { color: var(--ink); font-weight: 600; font-size: .85rem; margin: 2px 0; }
+  .bar { height: 40px; display: flex; align-items: flex-end; justify-content: center; }
+  .bar i { display: block; width: 14px; border-radius: 4px 4px 2px 2px; background: var(--rain); opacity: .85; }
+  .h.trajet .t { color: var(--accent); }
+  .h.trajet { background: var(--accent-soft); border-radius: 8px; }
+
+  /* emploi du temps */
+  .cours { display: grid; grid-template-columns: 92px 1fr; gap: 2px 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .cours:first-child { border-top: 0; }
+  .cours .heure { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .9rem; padding-top: 1px; }
+  .cours .mat { font-weight: 600; }
+  .cours .sub { grid-column: 2; color: var(--muted); font-size: .85rem; }
+  .cours.annule .mat { text-decoration: line-through; color: var(--muted); }
+  .badge {
+    display: inline-block; font-size: .7rem; font-weight: 700; padding: 2px 7px;
+    border-radius: 999px; margin-left: 6px; vertical-align: 2px; letter-spacing: .02em;
+  }
+  .badge.rouge { background: var(--danger-soft); color: var(--danger); }
+  .badge.orange { background: var(--accent-soft); color: var(--accent); }
+  .badge.vert { background: var(--ok-soft); color: var(--ok); }
+
+  /* devoirs */
+  .jour { margin-top: 12px; }
+  .jour:first-of-type { margin-top: 0; }
+  .jour h3 { font-size: .95rem; margin: 0 0 6px; }
+  .devoir { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .devoir input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--ok); flex: none; }
+  .devoir .mat { font-weight: 600; }
+  .devoir .txt { white-space: pre-wrap; color: var(--ink); font-size: .92rem; margin-top: 2px; }
+  .devoir.fait .mat, .devoir.fait .txt { color: var(--muted); text-decoration: line-through; }
+
+  /* notes */
+  .note { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .note:first-child { border-top: 0; }
+  .note .val { font-weight: 700; font-size: 1.1rem; font-variant-numeric: tabular-nums; text-align: right; }
+  .note .sub { color: var(--muted); font-size: .85rem; }
+  .note .cls { color: var(--muted); font-size: .8rem; text-align: right; }
+
+  .vide { color: var(--muted); font-style: italic; }
+  footer { margin-top: 24px; text-align: center; color: var(--muted); font-size: .8rem; }
+  #erreur { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <div id="erreur">
+    <section>
+      <h2>Brief du matin</h2>
+      <p>Pas de brief dans ce lien. Ouvre la page depuis le bouton « Ouvrir le brief » de ta notification.</p>
+      <p class="vide" id="erreur-detail"></p>
+    </section>
+  </div>
+  <div id="app"></div>
+  <footer>Brief généré automatiquement · les données sont dans le lien, pas sur ce site</footer>
+</main>
+
+<script>
+(async function () {
+  const $ = (tag, attrs = {}, ...enfants) => {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class") el.className = v; else if (k === "style") el.style.cssText = v; else el.setAttribute(k, v);
+    }
+    for (const e of enfants.flat()) if (e != null && e !== false) el.append(e.nodeType ? e : String(e));
+    return el;
+  };
+  const carte = (titre, ...contenu) => $("section", {}, $("h2", {}, titre), ...contenu);
+
+  async function decoder(hash) {
+    const h = hash.replace(/^#/, "");
+    if (!h) throw new Error("lien vide");
+    const b64 = h.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((h.length + 3) % 4);
+    const octets = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const flux = new Blob([octets]).stream().pipeThrough(new DecompressionStream("deflate"));
+    return JSON.parse(await new Response(flux).text());
+  }
+
+  let d;
+  try {
+    d = await decoder(location.hash);
+  } catch (e) {
+    document.getElementById("erreur").style.display = "block";
+    document.getElementById("erreur-detail").textContent = "(" + e.message + ")";
+    return;
+  }
+  document.title = d.titre || "Brief du matin";
+  const app = document.getElementById("app");
+
+  // --- en-tête
+  const cours = d.cours || [];
+  const vrais = cours.filter(c => !c.annule);
+  app.append($("header", {},
+    $("h1", {}, "🌅 " + (d.titre || "Brief")),
+    $("p", {}, "Préparé le " + (d.genere || "?") + (d.maj ? " · École Directe du " + d.maj : ""))
+  ));
+  if (d.cours_aujourdhui && vrais.length) {
+    app.append($("div", { class: "hero" },
+      vrais[0].debut + " → " + vrais[vrais.length - 1].fin,
+      $("small", {}, vrais.length + " cours")));
+  }
+
+  // --- alertes (contrôles du jour, changements, données vieilles)
+  const alertes = [];
+  for (const c of d.controles || []) {
+    if (c.startsWith("🚨")) alertes.push($("div", { class: "alert" }, c));
+  }
+  for (const l of d.journee || []) {
+    if (/^(➡️|❌|🔄)/.test(l)) alertes.push($("div", { class: "alert warn" }, l));
+    else if (l.startsWith("⚠️")) alertes.push($("div", { class: "alert warn" }, l));
+    else if (!d.cours_aujourdhui) alertes.push($("div", { class: "alert info" }, l));
+  }
+  if (alertes.length) app.append($("div", {}, alertes));
+
+  // --- météo
+  if (d.meteo) {
+    const m = d.meteo;
+    const maxPluie = 100;
+    const trajets = new Set(m.trajets || []);
+    const heures = (m.heures || []).map(([h, t, p]) =>
+      $("div", { class: "h" + (trajets.has(h) ? " trajet" : "") },
+        $("div", {}, h + "h"),
+        $("div", { class: "t" }, t + "°"),
+        $("div", { class: "bar" }, $("i", { style: `height:${Math.max(2, p / maxPluie * 40)}px`, title: p + " % pluie" })),
+        $("div", {}, p + "%")));
+    app.append(carte("Météo · " + (m.ville || ""),
+      $("div", { class: "meteo-top" },
+        $("div", { class: "emoji" }, m.emoji),
+        $("div", {}, $("b", {}, m.texte), $("br"), $("span", {}, `${m.min}° → ${m.max}° · pluie ${m.pluie} %`))),
+      m.trajets_txt ? $("div", { style: "margin-top:10px" }, m.trajets_txt) : null,
+      m.conseil ? $("div", { class: "conseil" }, m.conseil) : null,
+      heures.length ? $("div", { class: "heures" }, heures) : null));
+  }
+
+  // --- contrôles à venir
+  const ctrl = (d.controles || []);
+  if (ctrl.length) app.append(carte("Contrôles", $("ul", { class: "plain" }, ctrl.map(c => $("li", {}, c)))));
+
+  // --- emploi du temps
+  if (cours.length) {
+    const titre = d.cours_aujourdhui ? "Emploi du temps" : "Emploi du temps · " + (d.jour_cours_txt || "prochain jour");
+    app.append(carte(titre, $("div", {}, cours.map(c =>
+      $("div", { class: "cours" + (c.annule ? " annule" : "") },
+        $("div", { class: "heure" }, c.debut + "–" + c.fin),
+        $("div", { class: "mat" }, c.matiere,
+          c.annule ? $("span", { class: "badge rouge" }, "ANNULÉ") : null,
+          c.modifie ? $("span", { class: "badge orange" }, "MODIFIÉ") : null,
+          c.controle ? $("span", { class: "badge rouge" }, "CONTRÔLE") : null),
+        $("div", { class: "sub" }, [c.salle && "Salle " + c.salle, c.prof].filter(Boolean).join(" · "))
+      )))));
+  }
+
+  // --- devoirs (cases cochables, mémorisées sur ce téléphone)
+  const devoirs = d.devoirs || [];
+  if (devoirs.length) {
+    const cle = id => "brief-fait-" + id;
+    const lire = id => { try { return localStorage.getItem(cle(id)) === "1"; } catch { return false; } };
+    const ecrire = (id, v) => { try { localStorage.setItem(cle(id), v ? "1" : "0"); } catch {} };
+    const parJour = {};
+    for (const dv of devoirs) (parJour[dv.date] ||= { jour: dv.jour, liste: [] }).liste.push(dv);
+    const blocs = Object.keys(parJour).sort().map(date => {
+      const { jour, liste } = parJour[date];
+      return $("div", { class: "jour" }, $("h3", {}, "Pour " + jour),
+        liste.map(dv => {
+          const id = date + "-" + dv.matiere + "-" + (dv.contenu || "").length;
+          const fait = dv.fait || lire(id);
+          const ligne = $("label", { class: "devoir" + (fait ? " fait" : "") });
+          const box = $("input", { type: "checkbox" });
+          box.checked = fait;
+          box.addEventListener("change", () => { ecrire(id, box.checked); ligne.classList.toggle("fait", box.checked); });
+          ligne.append(box, $("div", {},
+            $("div", { class: "mat" }, dv.matiere, dv.interro ? $("span", { class: "badge rouge" }, "CONTRÔLE") : null),
+            $("div", { class: "txt" }, dv.contenu || "(pas de consigne)")));
+          return ligne;
+        }));
+    });
+    app.append(carte("Devoirs · 7 prochains jours", blocs));
+  }
+
+  // --- notes
+  const notes = d.notes || [];
+  if (notes.length) {
+    app.append(carte("Dernières notes", $("div", {}, notes.map(n =>
+      $("div", { class: "note" },
+        $("div", {}, $("b", {}, n.matiere), n.nouvelle ? $("span", { class: "badge vert" }, "NOUVEAU") : null,
+          $("div", { class: "sub" }, (n.devoir || "") + (n.date ? " · " + n.date : ""))),
+        $("div", {}, $("div", { class: "val" }, n.valeur + (/\d/.test(n.valeur) ? "/" + n.sur : "")),
+          n.classe ? $("div", { class: "cls" }, "classe " + n.classe) : null))))));
+  }
+
+  // --- messages et mails
+  if ((d.messages || []).length)
+    app.append(carte("Messages École Directe non lus",
+      $("ul", { class: "plain" }, d.messages.map(m => $("li", {}, $("b", {}, m.de), " — " + m.sujet,
+        m.date ? $("div", { class: "vide", style: "font-size:.8rem" }, m.date) : null)))));
+  if ((d.mails || []).length)
+    app.append(carte("Gmail", $("ul", { class: "plain" }, d.mails.map(m => $("li", {}, $("b", {}, m.de), " — " + m.sujet)))));
+
+  // --- vacances
+  if (d.vacances) app.append(carte("Vacances", $("div", {}, d.vacances)));
+})();
+</script>
+</body>
+</html>
