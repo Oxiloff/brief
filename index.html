@@ -264,6 +264,77 @@
   if ((d.mails || []).length)
     app.append(carte("Gmail", $("ul", { class: "plain" }, d.mails.map(m => $("li", {}, $("b", {}, m.de), " — " + m.sujet)))));
 
+  // --- vie scolaire
+  const vs = d.vie_scolaire || [];
+  if (vs.length) {
+    app.append(carte("Vie scolaire", $("ul", { class: "plain" }, vs.map(v =>
+      $("li", {},
+        $("b", {}, { Absence: "🚫 ", Retard: "⏰ " }[v.type] || "⚠️ ", v.type),
+        v.justifie === true ? $("span", { class: "badge vert" }, "JUSTIFIÉ") : null,
+        v.justifie === false ? $("span", { class: "badge rouge" }, "À JUSTIFIER") : null,
+        $("div", { class: "vide", style: "font-style:normal;font-size:.85rem" },
+          [v.quand, v.motif].filter(Boolean).join(" · ")))))));
+  }
+
+  // --- événements du lycée
+  const evs = d.evenements || [];
+  if (evs.length) {
+    app.append(carte("Au lycée", $("ul", { class: "plain" }, evs.map(e =>
+      $("li", {}, $("b", {}, "📌 " + e.titre),
+        $("div", { class: "vide", style: "font-style:normal;font-size:.85rem" },
+          [e.debut, e.fin && e.fin !== e.debut ? "→ " + e.fin : ""].filter(Boolean).join(" ")),
+        e.texte ? $("div", { class: "txt", style: "white-space:pre-wrap;font-size:.9rem;margin-top:4px" }, e.texte) : null)))));
+  }
+
+  // --- EN DIRECT : chargé au moment où la page s'ouvre
+  const live = d.live || {};
+  const attente = texte => $("div", { class: "vide" }, texte);
+
+  if ((live.lignes || []).length && live.prim) {
+    const boite = attente("Chargement du trafic…");
+    app.append(carte("🚇 Trafic · en direct", boite));
+    const propre = html => { const t = document.createElement("div"); t.innerHTML = html || ""; return t.textContent.trim(); };
+    Promise.all(live.lignes.map(async conf => {
+      const [id, nom] = conf.split("|");
+      try {
+        const r = await fetch("https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia/lines/"
+                              + encodeURIComponent(id) + "/line_reports", { headers: { apikey: live.prim } });
+        const j = await r.json();
+        const ligne = ((j.line_reports || [])[0] || {}).line || {};
+        const actives = (j.disruptions || []).filter(x => x.status === "active");
+        return { nom: nom || ligne.code || id, couleur: ligne.color, actives };
+      } catch { return { nom: nom || id, erreur: true, actives: [] }; }
+    })).then(res => {
+      boite.replaceWith($("div", {}, res.map(l => {
+        const pastille = $("span", { class: "badge", style: `background:#${l.couleur || "888"};color:#fff;margin:0 8px 0 0` }, l.nom);
+        if (l.erreur) return $("div", { class: "cours" }, $("div", {}, pastille), $("div", { class: "vide" }, "indisponible"));
+        if (!l.actives.length) return $("div", { class: "cours" }, $("div", {}, pastille), $("div", {}, "✅ Trafic normal"));
+        return $("div", { class: "cours" }, $("div", {}, pastille), $("div", {},
+          l.actives.slice(0, 3).map(x => {
+            const msg = (x.messages || []).find(m => (m.channel?.types || []).includes("web")) || (x.messages || [])[0] || {};
+            return $("div", { style: "margin-bottom:6px" },
+              $("b", { style: "color:var(--danger)" }, "⚠️ " + (x.severity?.name || "Perturbation")),
+              $("div", { class: "txt", style: "font-size:.88rem" }, propre(msg.text).slice(0, 280)));
+          })));
+      })));
+    });
+  }
+
+  if (live.actu) {
+    const boite = attente("Chargement de l'actu…");
+    app.append(carte("📰 Actu · en direct", boite));
+    fetch(live.actu).then(r => r.text()).then(xml => {
+      const doc = new DOMParser().parseFromString(xml, "text/xml");
+      const items = [...doc.querySelectorAll("item")].slice(0, 3);
+      if (!items.length) throw new Error("vide");
+      boite.replaceWith($("ul", { class: "plain" }, items.map(it => {
+        const lien = it.querySelector("link")?.textContent || "#";
+        return $("li", {}, $("a", { href: lien, target: "_blank", rel: "noopener",
+          style: "color:var(--ink);text-decoration:none;font-weight:600" }, it.querySelector("title")?.textContent || ""));
+      })));
+    }).catch(() => boite.textContent = "Actu indisponible pour le moment.");
+  }
+
   // --- vacances
   if (d.vacances) app.append(carte("Vacances", $("div", {}, d.vacances)));
 })();
